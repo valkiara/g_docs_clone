@@ -1,0 +1,33 @@
+name: g_docs_clone
+description: A new Flutter project.
+
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=2.18.4 <3.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.2
+  google_sign_in: ^5.4.2
+  flutter_riverpod: ^2.1.1
+  http: ^0.13.5
+  shared_preferences: ^2.0.15
+  routemaster: ^1.0.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^2.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/docs-logo.png
+    - assets/images/g-logo-2.png
