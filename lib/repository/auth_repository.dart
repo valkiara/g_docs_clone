@@ -1,11 +1,11 @@
 import 'dart:convert';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:g_docs_clone/constants.dart';
 import 'package:g_docs_clone/models/error_model.dart';
 import 'package:g_docs_clone/models/user_model.dart';
 import 'package:g_docs_clone/repository/local_storage_repository.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart';
-import 'package:riverpod/riverpod.dart';
 
 final authRepositoryProvider = Provider(
   (ref) => AuthRepository(GoogleSignIn(), Client(), LocalStorageRepository()),
