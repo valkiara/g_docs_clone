@@ -1,7 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart' as quill;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:g_docs_clone/colors.dart';
+import 'package:g_docs_clone/common/widgets/loader.dart';
+import 'package:g_docs_clone/models/document_model.dart';
+import 'package:g_docs_clone/models/error_model.dart';
+import 'package:g_docs_clone/repository/auth_repository.dart';
+import 'package:g_docs_clone/repository/socket_repository.dart';
+import 'package:g_docs_clone/screens/home_screen.dart';
+import 'package:routemaster/routemaster.dart';
 
 class DocumentScreen extends ConsumerStatefulWidget {
   final String id;
@@ -12,36 +22,102 @@ class DocumentScreen extends ConsumerStatefulWidget {
 }
 
 class _DocumentScreenState extends ConsumerState<DocumentScreen> {
-  TextEditingController textEditingController =
+  TextEditingController titleController =
       TextEditingController(text: 'Untitled Document');
-  final quill.QuillController _controller = quill.QuillController.basic();
+  quill.QuillController? _controller = quill.QuillController.basic();
+
+  ErrorModel? errorModel;
+  SocketRepository socketRepository = SocketRepository();
 
   @override
   void dispose() {
     super.dispose();
-    textEditingController.dispose();
+    titleController.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    socketRepository.joinRoom(widget.id);
+    fetchDocument(ref);
+
+    socketRepository.changeListener((data) => {
+          _controller?.compose(
+              quill.Delta.fromJson(data['delta']),
+              _controller?.selection ??
+                  const TextSelection.collapsed(offset: 0),
+              quill.ChangeSource.REMOTE),
+        });
+
+    Timer.periodic(const Duration(seconds: 2), (timer) {
+      socketRepository.autoSave({
+        'delta': _controller?.document.toDelta().toJson(),
+        'room': widget.id,
+      });
+    });
+  }
+
+  void fetchDocument(WidgetRef ref) async {
+    errorModel = await ref
+        .read(documentRepositoryProvider)
+        .getDocumentById(ref.read(userProvider)!.token, widget.id);
+    if (errorModel!.data != null) {
+      titleController.text = (errorModel!.data as DocumentModel).title;
+      _controller = quill.QuillController(
+          document: errorModel!.data.content.isEmpty
+              ? quill.Document()
+              : quill.Document.fromDelta(
+                  quill.Delta.fromJson(errorModel!.data.content)),
+          selection: const TextSelection.collapsed(offset: 0));
+      setState(() {});
+    }
+
+    _controller!.document.changes.listen((delta) {
+      if (delta.item3 == quill.ChangeSource.LOCAL) {
+        socketRepository.typing({
+          'delta': delta.item2,
+          'room': widget.id,
+        });
+      }
+    });
+  }
+
+  void updateTitle(WidgetRef ref, String title) {
+    ref.read(documentRepositoryProvider).updateTitle(
+        token: ref.read(userProvider)!.token, id: widget.id, title: title);
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_controller == null) {
+      return const Scaffold(
+        body: Loader(),
+      );
+    }
     return Scaffold(
         appBar: AppBar(
           title: Padding(
             padding: const EdgeInsets.symmetric(vertical: 9.0),
             child: Row(
               children: [
-                Image.asset('assets/images/docs-logo.png', height: 40),
+                GestureDetector(
+                  onTap: () {
+                    Routemaster.of(context).replace('/');
+                  },
+                  child: Image.asset('assets/images/docs-logo.png', height: 40),
+                ),
                 const SizedBox(width: 10),
                 SizedBox(
                     width: 200,
                     child: TextField(
-                      controller: textEditingController,
+                      controller: titleController,
                       decoration: const InputDecoration(
                           hintText: 'Untitled document',
                           focusedBorder: OutlineInputBorder(
                               borderSide: BorderSide(color: kBlueColor)),
                           border: InputBorder.none,
                           contentPadding: EdgeInsets.only(left: 10)),
+                      onSubmitted: (value) => updateTitle(ref, value),
                     ))
               ],
             ),
@@ -60,7 +136,16 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
             Padding(
               padding: const EdgeInsets.all(10.0),
               child: ElevatedButton.icon(
-                onPressed: () {},
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(
+                          text:
+                              'http://localhost:3000/#/document/${widget.id}'))
+                      .then((value) => {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                    content: Text('Link copied to clipboard')))
+                          });
+                },
                 icon: const Icon(
                   Icons.lock,
                   size: 16,
@@ -77,7 +162,7 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
           child: Column(
             children: [
               const SizedBox(height: 10),
-              quill.QuillToolbar.basic(controller: _controller),
+              quill.QuillToolbar.basic(controller: _controller!),
               const SizedBox(height: 10),
               Expanded(
                   child: SizedBox(
@@ -88,7 +173,7 @@ class _DocumentScreenState extends ConsumerState<DocumentScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(30.0),
                     child: quill.QuillEditor.basic(
-                      controller: _controller,
+                      controller: _controller!,
                       readOnly: false,
                     ),
                   ),
